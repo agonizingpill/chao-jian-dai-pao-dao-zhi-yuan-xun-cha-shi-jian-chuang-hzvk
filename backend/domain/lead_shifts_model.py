@@ -10,6 +10,7 @@ lead_shifts = Table('lead_shifts', metadata,
     Column('contact', String(160), nullable=False),
     Column('on_site', String(160), nullable=True),
     Column('checkpoint', String(160), nullable=True),
+    Column('ended_at', String(160), nullable=True),
     Column('state', String(160), nullable=False),
     CheckConstraint("state IN ('已领班','已签到','已交回')"),
 )

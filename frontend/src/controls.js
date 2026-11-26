@@ -24,16 +24,20 @@ function parse(form, fields) {
 }
 export function actionForm(action, refresh) {
   const notice = status('');
+  const detail = el('pre', {class:'result-detail', tabindex:'0'}, '');
+  detail.hidden = true;
   const button = el('button', {type:'submit'}, action.label);
   const form = el('form', {class:'action', id:action.name},
     el('h3',{},action.label), el('p',{},action.help),
     el('div',{class:'fields'},action.fields.map(field => el('label',{},
       el('span',{},field.label), input(field)))),
-    button, notice);
+    button, notice, detail);
   form.addEventListener('submit',async event => {
     event.preventDefault();
     button.disabled = true;
     notice.className = 'status';
+    detail.hidden = true;
+    detail.textContent = '';
     try {
       const data = await request(action.path, parse(form, action.fields));
       if (data.token && data.status === 'queued') {
@@ -43,11 +47,17 @@ export function actionForm(action, refresh) {
         });
         if (result.status === 'rejected') throw new Error(result.detail);
         notice.textContent = '任务 ' + data.token + ' · ' + display(result.result);
+        detail.textContent = display(result.result);
+        detail.hidden = false;
       } else {
         notice.textContent = action.success + ' · ' + display(data.code ?? data.status);
+        detail.textContent = display(data);
+        detail.hidden = false;
       }
       notice.classList.add('ok');
       await refresh();
+      action.onDone?.(data);
+      document.dispatchEvent(new CustomEvent('lab:changed'));
     } catch (error) {
       notice.textContent = error.message;
       notice.classList.add('error');

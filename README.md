@@ -54,9 +54,18 @@ Compose 运行 Nginx、Python FastAPI、独立 Redis 消费进程、SQL 数据�
 | 路线档案 | `/trail_routes` /trail_routes/register-route，/trail_routes/pause-route | `frontend/src/pages/trail_routes.js` |
 | 潮窗日历 | `/patrol_windows` /patrol_windows/register-window，/patrol_windows/compare-phase | `frontend/src/pages/patrol_windows.js` |
 | 路线限制 | `/trail_notices` /trail_notices/post-closure，/trail_notices/lift-closure | `frontend/src/pages/trail_notices.js` |
-| 带队与签到 | `/lead_shifts` /lead_shifts/assign-lead，/lead_shifts/check-in，/lead_shifts/hand-back | `frontend/src/pages/lead_shifts.js` |
+| 带队与签到 | `/lead_shifts` /lead_shifts/assign-lead，/lead_shifts/check-in，/lead_shifts/hand-back，/lead_shifts/estimate-arrival，/lead_shifts/trial-weights，/lead_shifts/resume-trial，/lead_shifts/weight-trials | `frontend/src/pages/lead_shifts.js` |
 
 SQL 实体与约束在 `backend/domain` 下维护。前端使用原生 ES modules。核心算子为 周期正余弦距离。圆周距离为将开始分钟映射到单位圆后的欧氏弦长，再加绝对窗口时长差/180。仅比较同线路、同相位、已发生在目标潮窗之前的日历样本。
+
+带队页的到场预估复用该算子，距离写作 `phase_weight * 弦长 + duration_weight * 时长差/180`（在用默认权重为 1/1）。近邻只取**已交回**、与目标班次**同路线同潮相**、且其潮窗在目标开窗前已结束的班次，取距离最近邻相对开窗的到场偏置估算到场时刻；`GET/POST /lead_shifts/weights` 读取在用权重，预估始终照用已启用的权重。
+
+试调权重走 `/lead_shifts/trial-weights`（状态式台账为 `/lead_shifts/weight-trials`，可 `POST /lead_shifts/replay-weights` 同步出结果）：
+
+- 发起时冻结同一批**可回放的已交回班次**及其近邻样本（写入 `weight_trials.samples`），新旧/多版权重都回放这同一批原样本；中断后 worker 重投或 `POST /lead_shifts/resume-trial` 都按冻结样本继续，不重新取样。
+- 同时冻结**发起试评时开放的路线**。每条开放路线至少要有一个可回放班次，否则试评单置为 **暂缓**（式接口返回 409 并提示“暂缓”，台账接口落 `暂缓` 单）。
+- 完成时在数据库行锁内重读当前在用权重：若期间没有别的试评换权重，就跟发起基线比；若并发试评已启用了另一版权重，这轮拿**原样本与当前新版权重重新计算 MAE** 再比。
+- 仅当发起时开放的每条路线“试调后 MAE 不高于对照版”且至少一条路线严格下降，才把两个权重**一起**更新到单例 `distance_weights`，试评单记 **已启用**；否则记 **未启用**，在用权重不变。重复完成同一试评单结果幂等。
 
 日期和点位为虚拟演练数据。UTC+8 日历用于跨午夜排班和历史相似性，不读取实测潮高，也不作可通行性判断。签到允许录入演练时钟以重放流程。
 

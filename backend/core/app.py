@@ -16,6 +16,9 @@ from scripts.seed_demo import seed
 async def lifespan(app):
     from core.db import engine
     metadata.create_all(engine)
+    from domain.lead_shifts_service import ensure_weights
+    with transaction() as conn:
+        ensure_weights(conn)
     if SEED_DEMO:
         try:
             seed()
